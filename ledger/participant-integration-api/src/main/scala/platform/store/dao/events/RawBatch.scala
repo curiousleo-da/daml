@@ -61,7 +61,7 @@ private[events] object RawBatch {
       commandId: Option[CommandId],
       transactionId: TransactionId,
       nodeId: NodeId,
-      submitter: Option[Party],
+      actAs: List[Party],
       ledgerEffectiveTime: Instant,
       offset: Offset,
       flatWitnesses: Set[Party],
@@ -79,7 +79,7 @@ private[events] object RawBatch {
         "node_index" -> nodeId.index,
         "command_id" -> commandId,
         "application_id" -> applicationId,
-        "submitter" -> submitter,
+        "submitters" -> Party.Array(actAs: _*),
         "flat_event_witnesses" -> Party.Array(flatWitnesses.toSeq: _*),
         "tree_event_witnesses" -> Party.Array(treeWitnesses.toSeq: _*),
       )

@@ -102,7 +102,7 @@ private[events] trait EventsTableTreeEvents { this: EventsTable =>
     val witnessesWhereClause =
       sqlFunctions.arrayIntersectionWhereClause("tree_event_witnesses", requestingParty)
     SQL"""select #$selectColumns, array[$requestingParty] as event_witnesses,
-                 case when submitter = $requestingParty then command_id else '' end as command_id
+                 case when submitters = array[$requestingParty] then command_id else '' end as command_id
           from participant_events
           where transaction_id = $transactionId and #$witnessesWhereClause
           order by node_index asc"""
@@ -116,8 +116,10 @@ private[events] trait EventsTableTreeEvents { this: EventsTable =>
       sqlFunctions.arrayIntersectionWhereClause("tree_event_witnesses", requestingParties)
     val filteredWitnesses =
       sqlFunctions.arrayIntersectionValues("tree_event_witnesses", requestingParties)
+    val submittersInPartiesClause =
+      sqlFunctions.arrayContainedByWhereClause("submitters", requestingParties)
     SQL"""select #$selectColumns, #$filteredWitnesses as event_witnesses,
-                 case when submitter in ($requestingParties) then command_id else '' end as command_id
+                 case when #$submittersInPartiesClause then command_id else '' end as command_id
           from participant_events
           where transaction_id = $transactionId and #$witnessesWhereClause
           order by node_index asc"""
@@ -143,7 +145,7 @@ private[events] trait EventsTableTreeEvents { this: EventsTable =>
     EventsRange.readPage(
       read = (range, limitExpr) => SQL"""
         select #$selectColumns, array[$requestingParty] as event_witnesses,
-               case when submitter = $requestingParty then command_id else '' end as command_id
+               case when submitters = array[$requestingParty] then command_id else '' end as command_id
         from participant_events
         where event_sequential_id > ${range.startExclusive}
               and event_sequential_id <= ${range.endInclusive}
@@ -164,10 +166,12 @@ private[events] trait EventsTableTreeEvents { this: EventsTable =>
       sqlFunctions.arrayIntersectionWhereClause("tree_event_witnesses", requestingParties)
     val filteredWitnesses =
       sqlFunctions.arrayIntersectionValues("tree_event_witnesses", requestingParties)
+    val submittersInPartiesClause =
+      sqlFunctions.arrayContainedByWhereClause("submitters", requestingParties)
     EventsRange.readPage(
       read = (range, limitExpr) => SQL"""
         select #$selectColumns, #$filteredWitnesses as event_witnesses,
-               case when submitter in ($requestingParties) then command_id else '' end as command_id
+               case when #$submittersInPartiesClause then command_id else '' end as command_id
         from participant_events
         where event_sequential_id > ${range.startExclusive}
               and event_sequential_id <= ${range.endInclusive}
