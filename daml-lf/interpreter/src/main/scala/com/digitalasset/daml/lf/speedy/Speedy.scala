@@ -226,11 +226,11 @@ private[lf] object Speedy {
         val newBase = this.env.size
         val increase = newBase - oldBase
         if (increase < 0) {
-          crash(s"rebase, not an increase!")
+          crash(s"markBase: $oldBase -> $newBase -- NOT AN INCREASE")
         }
         if (increase > 0) {
           this.envBase = newBase
-          //println(s"+base: $oldBase -> $newBase")
+          //println(s"markBase: $oldBase -> $newBase")
         }
       }
       oldBase
@@ -243,10 +243,10 @@ private[lf] object Speedy {
       if (doEarlyPop) {
         val reduction = this.envBase - envBase
         if (reduction < 0) {
-          crash(s"-base(): not a reduction!")
+          crash(s"restoreBase: ${this.envBase} -> ${envBase} -- NOT A REDUCTION")
         }
         if (reduction > 0) {
-          //println(s"-base: ${this.envBase} -> ${envBase}")
+          //println(s"restoreBase: ${this.envBase} -> ${envBase}")
           this.envBase = envBase
         }
       }
@@ -261,10 +261,10 @@ private[lf] object Speedy {
         // Pop the env-stack back to the (base) size when the enclosing (closure) context was entered
         val count = env.size - envSizeToBeRestored
         if (count < 0) {
-          crash(s"popToBase(EARLY), unexpected negative count: $count!")
+          crash(s"popToBase: ${env.size} --> ${envSizeToBeRestored} -- WRONG DIRECTION")
         }
         if (count > 0) {
-          //println(s"EARLY-POP: ${env.size} --> ${envSizeToBeRestored}")
+          //println(s"popToBase: ${env.size} --> ${envSizeToBeRestored}")
           env.subList(envSizeToBeRestored, env.size).clear
         }
       }
