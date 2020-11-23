@@ -389,6 +389,7 @@ private[lf] object Speedy {
       ctrl = expr
       kontStack = initialKontStack()
       env = emptyEnv
+      envBase = 0
       steps = 0
       track = Instrumentation()
     }
@@ -452,6 +453,7 @@ private[lf] object Speedy {
         kontStack.subList(catchIndex, kontStack.size).clear()
         env.subList(kcatch.envSize, env.size).clear()
         ctrl = kcatch.handler
+        envBase = env.size
         true
       } else
         false
