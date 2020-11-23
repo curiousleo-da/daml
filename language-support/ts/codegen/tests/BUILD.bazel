@@ -13,6 +13,7 @@ daml_compile(
     name = "build-and-lint",
     srcs = glob(["daml/**/*.daml"]),
     version = "1.0.0",
+    target = "1.dev",
 )
 
 # build-and-lint
