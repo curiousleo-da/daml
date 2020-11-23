@@ -215,12 +215,16 @@ private[lf] object Speedy {
         if (env.size > track.maxDepthEnv) track.maxDepthEnv = env.size
       }
     }
+
+    // markBase is called when pushing a continuation which requires access to
+    // temporaries.  After this call, the base is set to the current env-size.  The old
+    // base value is returned by this function, so it can be later restored.
     @inline
     def markBase(): Int = {
       val oldBase = this.envBase
       if (doEarlyPop) {
         val newBase = this.env.size
-        val increase = newBase - oldBase // expect to be positive
+        val increase = newBase - oldBase
         if (increase < 0) {
           crash(s"rebase, not an increase!")
         }
@@ -232,10 +236,12 @@ private[lf] object Speedy {
       oldBase
     }
 
+    // restoreBase is called when a continuation, which saved the base (by calling
+    // markBase), is entered.
     @inline
-    def shrinkBase(envBase: Int): Unit = {
+    def restoreBase(envBase: Int): Unit = {
       if (doEarlyPop) {
-        val reduction = this.envBase - envBase // expect to be positive
+        val reduction = this.envBase - envBase
         if (reduction < 0) {
           crash(s"-base(): not a reduction!")
         }
@@ -246,9 +252,10 @@ private[lf] object Speedy {
       }
     }
 
+    // popToBase is called when a value is returned to the continutaion on the top of the
+    // kontStack (in the run() code), or when entering (tail-calling) a closure.
     @inline
-    def popToBase(
-        ): Unit = {
+    def popToBase(): Unit = {
       if (doEarlyPop) {
         val envSizeToBeRestored = this.envBase
         // Pop the env-stack back to the (base) size when the enclosing (closure) context was entered
@@ -264,10 +271,11 @@ private[lf] object Speedy {
     }
 
     @inline
-    def restoreEnv(
+    def restoreEnv( //NICK: rename better: restoreFrameAndActuals, or restoreAF
         frameToBeRestored: Frame,
         actualsToBeRestored: Actuals,
         //NICK: we can remove envSizeToBeRestored when switching to early-pop
+        //NICK: and consequently we can remove it from the various continuations.
         envSizeToBeRestored: Int,
     ): Unit = {
       // Restore the frame and actuals to there state when the continuation was created.
@@ -308,8 +316,8 @@ private[lf] object Speedy {
         // stack trace it produced back on the continuation stack to get
         // complete stack trace at the use site. Thus, we store the stack traces
         // of top level values separately during their execution.
-        case Some(KCacheVal(b, v, defn, stack_trace)) =>
-          kontStack.set(last_index, KCacheVal(b, v, defn, loc :: stack_trace)); ()
+        case Some(KCacheVal(v, defn, stack_trace)) =>
+          kontStack.set(last_index, KCacheVal(v, defn, loc :: stack_trace)); ()
         case _ => pushKont(KLocation(loc))
       }
     }
@@ -464,7 +472,7 @@ private[lf] object Speedy {
                   eval.setCached(svalue, stackTrace)
                   returnValue = svalue
                 case None =>
-                  pushKont(KCacheVal(this.markBase(), eval, defn, Nil))
+                  pushKont(KCacheVal(eval, defn, Nil))
                   ctrl = defn.body
               }
             case None =>
@@ -569,7 +577,7 @@ private[lf] object Speedy {
 
           // Not enough arguments. Push a continuation to construct the PAP.
           if (othersLength < 0) {
-            this.pushKont(KPap(this.markBase(), prim, actuals, arity))
+            this.pushKont(KPap(prim, actuals, arity))
           } else {
             // Too many arguments: Push a continuation to re-apply the over-applied args.
             if (othersLength > 0) {
@@ -902,7 +910,7 @@ private[lf] object Speedy {
       extends Kont
       with SomeArrayEquals {
     def execute(vfun: SValue, machine: Machine) = {
-      machine.shrinkBase(savedBase);
+      machine.restoreBase(savedBase);
       machine.restoreEnv(frame, actuals, envSize)
       machine.enterApplication(vfun, newArgs)
     }
@@ -918,7 +926,7 @@ private[lf] object Speedy {
       extends Kont
       with SomeArrayEquals {
     def execute(vfun: SValue, machine: Machine) = {
-      machine.shrinkBase(savedBase);
+      machine.restoreBase(savedBase);
       machine.restoreEnv(frame, actuals, envSize)
       machine.executeApplication(vfun, newArgs)
     }
@@ -935,7 +943,7 @@ private[lf] object Speedy {
     def execute(v: SValue, machine: Machine) = {
       actuals.add(v)
       // Set frame/actuals to allow access to the function arguments and closure free-varables.
-      machine.shrinkBase(savedBase);
+      machine.restoreBase(savedBase);
       machine.restoreEnv(closure.frame, actuals, envSize)
       // Maybe push a continuation for the profiler
       val label = closure.label
@@ -959,7 +967,7 @@ private[lf] object Speedy {
     def execute(v: SValue, machine: Machine) = {
       actuals.add(v)
       // A builtin has no free-vars, so we set the frame to null.
-      machine.shrinkBase(savedBase);
+      machine.restoreBase(savedBase);
       machine.restoreEnv(null, actuals, envSize)
       try {
         builtin.execute(actuals, machine)
@@ -972,14 +980,9 @@ private[lf] object Speedy {
   }
 
   /** The function's partial-arguments have been evaluated. Construct and return the PAP */
-  private[speedy] final case class KPap(
-      savedBase: Int, //NICK: dont need?
-      prim: Prim,
-      actuals: util.ArrayList[SValue],
-      arity: Int)
+  private[speedy] final case class KPap(prim: Prim, actuals: util.ArrayList[SValue], arity: Int)
       extends Kont {
     def execute(v: SValue, machine: Machine) = {
-      //machine.savedBase = savedBase //NICK, no!?
       actuals.add(v)
       machine.returnValue = SPAP(prim, actuals, arity)
     }
@@ -1071,7 +1074,7 @@ private[lf] object Speedy {
       extends Kont
       with SomeArrayEquals {
     def execute(v: SValue, machine: Machine) = {
-      machine.shrinkBase(savedBase);
+      machine.restoreBase(savedBase);
       machine.restoreEnv(frame, actuals, envSize)
       executeMatchAlts(machine, alts, v);
     }
@@ -1093,7 +1096,7 @@ private[lf] object Speedy {
       extends Kont
       with SomeArrayEquals {
     def execute(v: SValue, machine: Machine) = {
-      machine.shrinkBase(savedBase);
+      machine.restoreBase(savedBase);
       machine.restoreEnv(frame, actuals, envSize)
       to.add(v)
       machine.ctrl = next
@@ -1112,10 +1115,10 @@ private[lf] object Speedy {
     def execute(acc: SValue, machine: Machine) = {
       list.pop match {
         case None =>
-          machine.shrinkBase(savedBase)
+          machine.restoreBase(savedBase)
           machine.returnValue = acc
         case Some((item, rest)) =>
-          machine.shrinkBase(savedBase);
+          machine.restoreBase(savedBase);
           machine.restoreEnv(frame, actuals, envSize)
           // NOTE: We are "recycling" the current continuation with the
           // remainder of the list to avoid allocating a new continuation.
@@ -1128,7 +1131,6 @@ private[lf] object Speedy {
   }
 
   private[speedy] final case class KFoldr(
-      savedBase: Int,
       func: SValue,
       list: ImmArray[SValue],
       var lastIndex: Int,
@@ -1139,16 +1141,13 @@ private[lf] object Speedy {
       with SomeArrayEquals {
     def execute(acc: SValue, machine: Machine) = {
       if (lastIndex > 0) {
-        machine.shrinkBase(savedBase); //NICK ??
         machine.restoreEnv(frame, actuals, envSize)
         val currentIndex = lastIndex - 1
         val item = list(currentIndex)
         lastIndex = currentIndex
-        val _ = machine.markBase() //NICK ??
         machine.pushKont(this) // NOTE: We've updated `lastIndex`.
         machine.enterApplication(func, Array(SEValue(item), SEValue(acc)))
       } else {
-        machine.shrinkBase(savedBase)
         machine.returnValue = acc
       }
     }
@@ -1157,7 +1156,6 @@ private[lf] object Speedy {
   // NOTE: See the explanation above the definition of `SBFoldr` on why we need
   // this continuation and what it does.
   private[speedy] final case class KFoldr1Map(
-      savedBase: Int,
       func: SValue,
       var list: FrontStack[SValue],
       var revClosures: FrontStack[SValue],
@@ -1171,14 +1169,11 @@ private[lf] object Speedy {
       revClosures = closure +: revClosures
       list.pop match {
         case None =>
-          machine.shrinkBase(savedBase)
-          machine.pushKont(KFoldr1Reduce(machine.markBase(), revClosures, frame, actuals, envSize))
+          machine.pushKont(KFoldr1Reduce(revClosures, frame, actuals, envSize))
           machine.returnValue = init
         case Some((item, rest)) =>
-          machine.shrinkBase(savedBase); //NICK ??
           machine.restoreEnv(frame, actuals, envSize)
           list = rest
-          val _ = machine.markBase() //NICK ??
           machine.pushKont(this) // NOTE: We've updated `revClosures` and `list`.
           machine.enterApplication(func, Array(SEValue(item)))
       }
@@ -1188,7 +1183,6 @@ private[lf] object Speedy {
   // NOTE: See the explanation above the definition of `SBFoldr` on why we need
   // this continuation and what it does.
   private[speedy] final case class KFoldr1Reduce(
-      savedBase: Int,
       var revClosures: FrontStack[SValue],
       frame: Frame,
       actuals: Actuals,
@@ -1198,13 +1192,10 @@ private[lf] object Speedy {
     def execute(acc: SValue, machine: Machine) = {
       revClosures.pop match {
         case None =>
-          machine.shrinkBase(savedBase)
           machine.returnValue = acc
         case Some((closure, rest)) =>
-          machine.shrinkBase(savedBase); // NICK ??
           machine.restoreEnv(frame, actuals, envSize)
           revClosures = rest
-          val _ = machine.markBase() // NICK ??
           machine.pushKont(this) // NOTE: We've updated `revClosures`.
           machine.enterApplication(closure, Array(SEValue(acc)))
       }
@@ -1219,13 +1210,11 @@ private[lf] object Speedy {
     * large record is updated multiple times.
     */
   private[speedy] final case class KCacheVal(
-      savedBase: Int, //NICK: dont need it?
       v: SEVal,
       defn: SDefinition,
       stack_trace: List[Location])
       extends Kont {
     def execute(sv: SValue, machine: Machine): Unit = {
-      //machine.savedBase = savedBase //NICK: no!?
       machine.pushStackTrace(stack_trace)
       v.setCached(sv, stack_trace)
       defn.setCached(sv, stack_trace)
@@ -1248,7 +1237,7 @@ private[lf] object Speedy {
       extends Kont
       with SomeArrayEquals {
     def execute(v: SValue, machine: Machine) = {
-      machine.shrinkBase(savedBase);
+      machine.restoreBase(savedBase);
       machine.restoreEnv(frame, actuals, envSize)
       machine.ctrl = fin
     }
