@@ -62,6 +62,8 @@ private[dao] final class TransactionsWriter(
     dbType: DbType,
     metrics: Metrics,
     lfValueTranslation: LfValueTranslation,
+    compressionStrategy: CompressionStrategy,
+    compressionMetrics: CompressionMetrics,
 ) {
 
   private val contractsTable = ContractsTable(dbType)
@@ -103,9 +105,19 @@ private[dao] final class TransactionsWriter(
         ),
       )
 
+    val compressed =
+      Timed.value(
+        metrics.daml.index.db.storeTransactionDbMetrics.compressionTimer,
+        TransactionIndexing.compress(
+          serialized,
+          compressionStrategy,
+          compressionMetrics,
+        )
+      )
+
     new TransactionsWriter.PreparedInsert(
-      EventsTable.toExecutables(indexing.transaction, indexing.events, serialized),
-      contractsTable.toExecutables(indexing.transaction, indexing.contracts, serialized),
+      EventsTable.toExecutables(indexing.transaction, indexing.events, compressed.events),
+      contractsTable.toExecutables(indexing.transaction, indexing.contracts, compressed.contracts),
       contractWitnessesTable.toExecutables(indexing.contractWitnesses),
     )
 

@@ -116,7 +116,7 @@ private[dao] final class TransactionsReader(
         rawEvents =>
           Timed.value(
             timer = dbMetrics.lookupFlatTransactionById.translationTimer,
-            value = Future.traverse(rawEvents)(deserializeEntry(verbose = true))
+            value = Future.traverse(rawEvents)(deserializeEntry(verbose = true)),
         ))
       .map(EventsTable.Entry.toGetFlatTransactionResponse)
   }
