@@ -15,7 +15,7 @@ import com.daml.ledger.api.health.HealthStatus
 import com.daml.ledger.participant.state.v1.Offset
 import com.daml.ledger.resources.{Resource, ResourceContext, ResourceOwner}
 import com.daml.logging.{ContextualizedLogger, LoggingContext}
-import com.daml.metrics.Metrics
+import com.daml.metrics.{Event, Metrics, SpanAttribute, Spans}
 import com.daml.platform.akkastreams.dispatcher.Dispatcher
 import com.daml.platform.common.{LedgerIdNotFoundException, MismatchException}
 import com.daml.platform.configuration.ServerRole
@@ -127,7 +127,11 @@ private final class ReadOnlySqlLedger(
             .tick(0.millis, 100.millis, ())
             .mapAsync(1)(_ => ledgerDao.lookupLedgerEnd()))
       .viaMat(KillSwitches.single)(Keep.right[NotUsed, UniqueKillSwitch])
-      .toMat(Sink.foreach(dispatcher.signalNewHead))(Keep.both[UniqueKillSwitch, Future[Done]])
+      .toMat(Sink.foreach(offset => {
+        Spans.addEventToCurrentSpan(
+          Event("received offset", Map((SpanAttribute.Offset.key, offset.toHexString))))
+        dispatcher.signalNewHead(offset)
+      }))(Keep.both[UniqueKillSwitch, Future[Done]])
       .run()
 
   // Periodically remove all expired deduplication cache entries.

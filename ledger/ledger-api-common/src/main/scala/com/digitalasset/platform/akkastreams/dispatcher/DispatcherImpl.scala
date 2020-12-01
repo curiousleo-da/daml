@@ -7,7 +7,9 @@ import java.util.concurrent.atomic.AtomicReference
 
 import akka.NotUsed
 import akka.stream.scaladsl.Source
+import com.daml.metrics.SpanAttribute
 import com.github.ghik.silencer.silent
+import io.opentelemetry.OpenTelemetry
 import org.slf4j.LoggerFactory
 
 import scala.collection.immutable
@@ -72,7 +74,16 @@ final class DispatcherImpl[Index: Ordering](
         case c: Closed => c
       } match {
       case Running(prev, disp) =>
-        if (Ordering[Index].gt(head, prev)) disp.signal()
+        if (Ordering[Index].gt(head, prev)) {
+          val span = OpenTelemetry
+            .getTracer("read-only-sql-ledger")
+            .spanBuilder("signal-new-head")
+            .setNoParent()
+            .setAttribute(SpanAttribute.Offset.key, head.toString)
+            .startSpan()
+          disp.signal()
+          span.end()
+        }
       case _: Closed =>
         logger.debug(s"$name: Failed to update Dispatcher HEAD: instance already closed.")
     }
