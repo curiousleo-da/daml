@@ -7,7 +7,7 @@ import java.util.concurrent.atomic.AtomicReference
 
 import akka.NotUsed
 import akka.stream.scaladsl.Source
-import com.daml.metrics.SpanAttribute
+import com.daml.metrics.{Event, SpanAttribute, Spans}
 import com.github.ghik.silencer.silent
 import io.opentelemetry.OpenTelemetry
 import org.slf4j.LoggerFactory
@@ -76,10 +76,10 @@ final class DispatcherImpl[Index: Ordering](
       case Running(prev, disp) =>
         if (Ordering[Index].gt(head, prev)) {
           val span = OpenTelemetry
-            .getTracer("read-only-sql-ledger")
-            .spanBuilder("signal-new-head")
+            .getTracer("pkv")
+            .spanBuilder("signal-new-head2")
             .setNoParent()
-            .setAttribute(SpanAttribute.Offset.key, head.toString)
+            .setAttribute(SpanAttribute.Offset.key, head.toString.slice("Offset(Bytes(".length, "Offset(Bytes(000000000000048a0000000000000000".length))
             .startSpan()
           disp.signal()
           span.end()
@@ -102,6 +102,7 @@ final class DispatcherImpl[Index: Ordering](
         new IllegalArgumentException(
           s"$name: Invalid index section: start '$startExclusive' is after end '$endInclusive'"))
     else {
+      val lastIndex = new AtomicReference[Index](startExclusive)
       val subscription = state.get.getSignalDispatcher.fold(Source.failed[Index](closedError))(
         _.subscribe(signalOnSubscribe = true)
         // This needs to call getHead directly, otherwise this subscription might miss a Signal being emitted
@@ -120,6 +121,22 @@ final class DispatcherImpl[Index: Ordering](
             // because here we only know that the Index type is order-able.
               .takeWhile(Ordering[Index].lt(_, maxLedgerEnd), inclusive = true)
               .map(Ordering[Index].min(_, maxLedgerEnd))
+              .wireTap(index => {
+                val _ = lastIndex.getAndUpdate(lastIndex =>
+                  if (Ordering[Index].gt(index, lastIndex)) {
+                    val span = OpenTelemetry
+                      .getTracer("pkv")
+                      .spanBuilder("starting-at-span2")
+                      .setNoParent()
+                      .setAttribute(SpanAttribute.Offset.key, index.toString.slice("Offset(Bytes(".length, "Offset(Bytes(000000000000048a0000000000000000".length))
+                      .startSpan()
+                    Spans.addEventToCurrentSpan(Event("starting-at2", Map(("daml.offset", index.toString.slice("Offset(Bytes(".length, "Offset(Bytes(000000000000048a0000000000000000".length)))))
+                    span.end()
+                    index
+                  } else {
+                    lastIndex
+                  })
+              })
         )
 
       withOptionalEnd
