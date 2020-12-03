@@ -17,24 +17,6 @@ class OffsetTracerImpl extends OffsetTracer {
 
   private val clock = new NanoClock
 
-//  private val logger = ContextualizedLogger.get(this.getClass)
-
-//  private val cache: Cache[Offset, Instant] = CacheBuilder
-//    .newBuilder()
-//    .maximumSize(1024)
-//    .removalListener(notification => {
-//      notification.getCause match {
-//        case RemovalCause.EXPLICIT => // Nothing to do
-//        case RemovalCause.SIZE =>
-////          logger.warn(s"Timestamp for offset ${notification.getKey} evicted due to size.")
-//        case RemovalCause.REPLACED | RemovalCause.COLLECTED | RemovalCause.EXPIRED =>
-//          // We don't do any of the things that could lead to these removal causes.
-////          logger.error(
-////            s"Timestamp for offset ${notification.getKey} evicted due to ${notification.getCause}.")
-//      }
-//    })
-//    .build()
-
   private val cache = scala.collection.mutable.SortedMap[Offset, Instant]()
 
   def observeHead(head: Offset): Unit = cache.synchronized {
