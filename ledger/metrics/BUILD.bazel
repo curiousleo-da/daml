@@ -17,6 +17,7 @@ da_scala_library(
     ],
     runtime_deps = [],
     deps = [
+        "//daml-lf/data",
         "//ledger/participant-state",
         "//libs-scala/concurrent",
         "@maven//:com_typesafe_akka_akka_actor_2_12",
