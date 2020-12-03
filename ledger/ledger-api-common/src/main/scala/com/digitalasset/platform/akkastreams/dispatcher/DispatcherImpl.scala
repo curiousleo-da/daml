@@ -72,10 +72,7 @@ final class DispatcherImpl[Index: Ordering](
         case c: Closed => c
       } match {
       case Running(prev, disp) =>
-        if (Ordering[Index].gt(head, prev)) {
-//          offsetTracer.observeHead(head)
-          disp.signal()
-        }
+        if (Ordering[Index].gt(head, prev)) disp.signal()
       case _: Closed =>
         logger.debug(s"$name: Failed to update Dispatcher HEAD: instance already closed.")
     }
@@ -94,7 +91,6 @@ final class DispatcherImpl[Index: Ordering](
         new IllegalArgumentException(
           s"$name: Invalid index section: start '$startExclusive' is after end '$endInclusive'"))
     else {
-//      val lastIndex = new AtomicReference[Index](startExclusive)
       val subscription = state.get.getSignalDispatcher.fold(Source.failed[Index](closedError))(
         _.subscribe(signalOnSubscribe = true)
         // This needs to call getHead directly, otherwise this subscription might miss a Signal being emitted
@@ -113,22 +109,6 @@ final class DispatcherImpl[Index: Ordering](
             // because here we only know that the Index type is order-able.
               .takeWhile(Ordering[Index].lt(_, maxLedgerEnd), inclusive = true)
               .map(Ordering[Index].min(_, maxLedgerEnd))
-//              .wireTap(index => {
-//                val _ = lastIndex.getAndUpdate(lastIndex =>
-//                  if (Ordering[Index].gt(index, lastIndex)) {
-//                    val span = OpenTelemetry
-//                      .getTracer("pkv")
-//                      .spanBuilder("starting-at-span2")
-//                      .setNoParent()
-//                      .setAttribute(SpanAttribute.Offset.key, index.toString.slice("Offset(Bytes(".length, "Offset(Bytes(000000000000048a0000000000000000".length))
-//                      .startSpan()
-//                    Spans.addEventToCurrentSpan(Event("starting-at2", Map(("daml.offset", index.toString.slice("Offset(Bytes(".length, "Offset(Bytes(000000000000048a0000000000000000".length)))))
-//                    span.end()
-//                    index
-//                  } else {
-//                    lastIndex
-//                  })
-//              })
         )
 
       withOptionalEnd
@@ -136,18 +116,6 @@ final class DispatcherImpl[Index: Ordering](
         .flatMapConcat {
           case (previousHead, head) => subsource(previousHead, head)
         }
-//        .wireTap(x => offsetTracer.observeSubsourceOffset(x._1))
-//        .wireTap(_ match {
-//          case (index, _) =>
-//            val span = OpenTelemetry
-//              .getTracer("pkv")
-//              .spanBuilder("starting-at-span3")
-//              .setNoParent()
-//              .setAttribute(SpanAttribute.Offset.key, index.toString.slice("Offset(Bytes(".length, "Offset(Bytes(000000000000048a0000000000000000".length))
-//              .startSpan()
-//            Spans.addEventToCurrentSpan(Event("starting-at3", Map(("daml.offset", index.toString.slice("Offset(Bytes(".length, "Offset(Bytes(000000000000048a0000000000000000".length)))))
-//            span.end()
-//        })
     }
 
   private class ContinuousRangeEmitter(private var max: Index) // var doesn't need to be synchronized, it is accessed in a GraphStage.
