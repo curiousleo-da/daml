@@ -3,7 +3,9 @@
 
 package com.daml.metrics
 
-class OffsetTracerImpl[K]() extends OffsetTracer {
+import com.daml.ledger.participant.state.v1.Offset
+
+class OffsetTracerImpl extends OffsetTracer {
 
 //  private val logger = ContextualizedLogger.get(this.getClass)
 
@@ -26,11 +28,11 @@ class OffsetTracerImpl[K]() extends OffsetTracer {
 //      override def load(key: K): Span = spanBuilder.startSpan()
 //    })
 
-  def observeHead(key: String): Unit = {}
+  def observeHead(key: Offset): Unit = {}
 
-  def observeEnd(key: String): Unit = {}
+  def observeEnd(key: Offset): Unit = {}
 }
 
 object OffsetTracerImpl {
-  def apply[K](): OffsetTracer = new OffsetTracerImpl[K]()
+  def apply[K](): OffsetTracer = new OffsetTracerImpl()
 }

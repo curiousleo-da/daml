@@ -129,7 +129,7 @@ private final class ReadOnlySqlLedger(
             .tick(0.millis, 100.millis, ())
             .mapAsync(1)(_ => ledgerDao.lookupLedgerEnd()))
       .viaMat(KillSwitches.single)(Keep.right[NotUsed, UniqueKillSwitch])
-      .wireTap(offset => offsetTracer.observeHead(offset.toHexString))
+      .wireTap(offsetTracer.observeHead(_))
       .toMat(Sink.foreach(dispatcher.signalNewHead))(Keep.both[UniqueKillSwitch, Future[Done]])
       .run()
 

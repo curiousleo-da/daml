@@ -17,6 +17,7 @@ da_scala_library(
     ],
     runtime_deps = [],
     deps = [
+        "//ledger/participant-state",
         "//libs-scala/concurrent",
         "@maven//:com_typesafe_akka_akka_actor_2_12",
         "@maven//:com_typesafe_akka_akka_stream_2_12",

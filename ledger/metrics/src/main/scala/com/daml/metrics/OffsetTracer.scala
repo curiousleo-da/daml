@@ -3,14 +3,16 @@
 
 package com.daml.metrics
 
-trait OffsetTracer {
-  def observeHead(head: String): Unit
+import com.daml.ledger.participant.state.v1.Offset
 
-  def observeEnd(offset: String): Unit
+trait OffsetTracer {
+  def observeHead(head: Offset): Unit
+
+  def observeEnd(offset: Offset): Unit
 }
 
 class NoOpOffsetTracer extends OffsetTracer {
-  override def observeHead(head: String): Unit = ()
+  override def observeHead(head: Offset): Unit = ()
 
-  override def observeEnd(offset: String): Unit = ()
+  override def observeEnd(offset: Offset): Unit = ()
 }
