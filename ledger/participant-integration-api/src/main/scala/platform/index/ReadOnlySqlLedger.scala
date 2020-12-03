@@ -15,7 +15,7 @@ import com.daml.ledger.api.health.HealthStatus
 import com.daml.ledger.participant.state.v1.Offset
 import com.daml.ledger.resources.{Resource, ResourceContext, ResourceOwner}
 import com.daml.logging.{ContextualizedLogger, LoggingContext}
-import com.daml.metrics.Metrics
+import com.daml.metrics.{Metrics, OffsetTracer}
 import com.daml.platform.akkastreams.dispatcher.Dispatcher
 import com.daml.platform.common.{LedgerIdNotFoundException, MismatchException}
 import com.daml.platform.configuration.ServerRole
@@ -40,6 +40,7 @@ private[platform] object ReadOnlySqlLedger {
       eventsPageSize: Int,
       metrics: Metrics,
       lfValueTranslationCache: LfValueTranslation.Cache,
+      offsetTracer: OffsetTracer,
   )(implicit mat: Materializer, loggingContext: LoggingContext)
       extends ResourceOwner[ReadOnlyLedger] {
     override def acquire()(implicit context: ResourceContext): Resource[ReadOnlyLedger] =
@@ -49,7 +50,7 @@ private[platform] object ReadOnlySqlLedger {
         ledgerEnd <- Resource.fromFuture(ledgerDao.lookupLedgerEnd())
         dispatcher <- dispatcherOwner(ledgerEnd).acquire()
         ledger <- ResourceOwner
-          .forCloseable(() => new ReadOnlySqlLedger(ledgerId, ledgerDao, dispatcher))
+          .forCloseable(() => new ReadOnlySqlLedger(ledgerId, ledgerDao, dispatcher, offsetTracer))
           .acquire()
       } yield ledger
 
@@ -115,6 +116,7 @@ private final class ReadOnlySqlLedger(
     ledgerId: LedgerId,
     ledgerDao: LedgerReadDao,
     dispatcher: Dispatcher[Offset],
+    offsetTracer: OffsetTracer,
 )(implicit mat: Materializer, loggingContext: LoggingContext)
     extends BaseLedger(ledgerId, ledgerDao, dispatcher) {
 
@@ -127,6 +129,7 @@ private final class ReadOnlySqlLedger(
             .tick(0.millis, 100.millis, ())
             .mapAsync(1)(_ => ledgerDao.lookupLedgerEnd()))
       .viaMat(KillSwitches.single)(Keep.right[NotUsed, UniqueKillSwitch])
+      .wireTap(offset => offsetTracer.observeHead(offset.toHexString))
       .toMat(Sink.foreach(dispatcher.signalNewHead))(Keep.both[UniqueKillSwitch, Future[Done]])
       .run()
 

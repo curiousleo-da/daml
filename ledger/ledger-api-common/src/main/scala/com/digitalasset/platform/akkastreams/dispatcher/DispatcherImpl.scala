@@ -3,16 +3,11 @@
 
 package com.daml.platform.akkastreams.dispatcher
 
-import java.time.Instant
-import java.time.temporal.ChronoUnit
 import java.util.concurrent.atomic.AtomicReference
 
 import akka.NotUsed
 import akka.stream.scaladsl.Source
-import com.daml.metrics.{Event, SpanAttribute}
 import com.github.ghik.silencer.silent
-import io.opentelemetry.OpenTelemetry
-import io.opentelemetry.trace.Span
 import org.slf4j.LoggerFactory
 
 import scala.collection.immutable
@@ -24,12 +19,6 @@ final class DispatcherImpl[Index: Ordering](
     extends Dispatcher[Index] {
 
   private val logger = LoggerFactory.getLogger(getClass)
-
-  private val spanBuilder: Span.Builder = OpenTelemetry.getTracer("dispatcher-impl").spanBuilder("everything").setNoParent()
-
-  private var span = spanBuilder.startSpan()
-
-  private var lastSpan = Instant.now()
 
   require(
     !indexIsBeforeZero(headAtInitialization),
@@ -84,12 +73,7 @@ final class DispatcherImpl[Index: Ordering](
       } match {
       case Running(prev, disp) =>
         if (Ordering[Index].gt(head, prev)) {
-          span.addEvent(Event("new-head", Map((SpanAttribute.Offset.key, head.toString.slice("Offset(Bytes(".length, "Offset(Bytes(000000000000048a0000000000000000".length)))))
-          if (Instant.now().isAfter(lastSpan.plus(5, ChronoUnit.SECONDS))) {
-            span.end()
-            span = spanBuilder.startSpan()
-            lastSpan = Instant.now()
-          }
+//          offsetTracer.observeHead(head)
           disp.signal()
         }
       case _: Closed =>
@@ -152,10 +136,7 @@ final class DispatcherImpl[Index: Ordering](
         .flatMapConcat {
           case (previousHead, head) => subsource(previousHead, head)
         }
-        .wireTap(_ match {
-          case (index, _) =>
-            span.addEvent(Event("subsource", Map((SpanAttribute.Offset.key, index.toString.slice("Offset(Bytes(".length, "Offset(Bytes(000000000000048a0000000000000000".length)))))
-        })
+//        .wireTap(x => offsetTracer.observeSubsourceOffset(x._1))
 //        .wireTap(_ match {
 //          case (index, _) =>
 //            val span = OpenTelemetry
@@ -195,7 +176,6 @@ final class DispatcherImpl[Index: Ordering](
       case Running(_, disp) =>
         disp.signal()
         disp.close()
-        span.end()
       case _: Closed => ()
     }
 

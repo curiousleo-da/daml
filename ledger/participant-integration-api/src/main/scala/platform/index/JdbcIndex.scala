@@ -9,7 +9,7 @@ import com.daml.ledger.participant.state.index.v2.IndexService
 import com.daml.ledger.participant.state.v1.ParticipantId
 import com.daml.ledger.resources.ResourceOwner
 import com.daml.logging.LoggingContext
-import com.daml.metrics.Metrics
+import com.daml.metrics.{Metrics, OffsetTracer}
 import com.daml.platform.configuration.ServerRole
 import com.daml.platform.store.dao.events.LfValueTranslation
 
@@ -22,6 +22,7 @@ private[platform] object JdbcIndex {
       eventsPageSize: Int,
       metrics: Metrics,
       lfValueTranslationCache: LfValueTranslation.Cache,
+      offsetTracer: OffsetTracer,
   )(implicit mat: Materializer, loggingContext: LoggingContext): ResourceOwner[IndexService] =
     new ReadOnlySqlLedger.Owner(
       serverRole,
@@ -30,6 +31,7 @@ private[platform] object JdbcIndex {
       eventsPageSize,
       metrics,
       lfValueTranslationCache,
+      offsetTracer,
     ).map { ledger =>
       new LedgerBackedIndexService(MeteredReadOnlyLedger(ledger, metrics), participantId)
     }

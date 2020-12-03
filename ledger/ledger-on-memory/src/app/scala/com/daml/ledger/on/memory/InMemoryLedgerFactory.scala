@@ -21,6 +21,7 @@ import com.daml.logging.LoggingContext
 import com.daml.platform.akkastreams.dispatcher.Dispatcher
 import com.daml.platform.configuration.LedgerConfiguration
 import com.daml.ledger.resources.ResourceOwner
+import com.daml.metrics.OffsetTracer
 import scopt.OptionParser
 
 private[memory] class InMemoryLedgerFactory(dispatcher: Dispatcher[Index], state: InMemoryState)
@@ -30,6 +31,7 @@ private[memory] class InMemoryLedgerFactory(dispatcher: Dispatcher[Index], state
       config: Config[ExtraConfig],
       participantConfig: ParticipantConfig,
       engine: Engine,
+      offsetTracer: OffsetTracer,
   )(
       implicit materializer: Materializer,
       loggingContext: LoggingContext,

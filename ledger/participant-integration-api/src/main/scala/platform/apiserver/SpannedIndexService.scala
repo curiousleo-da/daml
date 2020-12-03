@@ -34,11 +34,12 @@ import com.daml.lf.language.Ast
 import com.daml.lf.transaction.GlobalKey
 import com.daml.lf.value.Value
 import com.daml.logging.LoggingContext
-import com.daml.metrics.{Event, Spans}
+import com.daml.metrics.{Event, OffsetTracer, Spans}
 
 import scala.concurrent.Future
 
-private[daml] final class SpannedIndexService(delegate: IndexService) extends IndexService {
+private[daml] final class SpannedIndexService(delegate: IndexService, offsetTracer: OffsetTracer)
+    extends IndexService {
 
   override def listLfPackages()(
       implicit loggingContext: LoggingContext,
@@ -87,9 +88,7 @@ private[daml] final class SpannedIndexService(delegate: IndexService) extends In
       .transactions(begin, endAt, filter, verbose)
       .wireTap(
         _.transactions
-          .map(transaction =>
-            Event(transaction.commandId, TraceIdentifiers.fromTransaction(transaction)))
-          .foreach(Spans.addEventToCurrentSpan))
+          .foreach(transaction => offsetTracer.observeEnd(transaction.offset)))
 
   override def transactionTrees(
       begin: domain.LedgerOffset,
