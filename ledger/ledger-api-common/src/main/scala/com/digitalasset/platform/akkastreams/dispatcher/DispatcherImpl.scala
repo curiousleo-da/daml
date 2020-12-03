@@ -3,13 +3,16 @@
 
 package com.daml.platform.akkastreams.dispatcher
 
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.concurrent.atomic.AtomicReference
 
 import akka.NotUsed
 import akka.stream.scaladsl.Source
-import com.daml.metrics.{Event, SpanAttribute, Spans}
+import com.daml.metrics.{Event, SpanAttribute}
 import com.github.ghik.silencer.silent
 import io.opentelemetry.OpenTelemetry
+import io.opentelemetry.trace.Span
 import org.slf4j.LoggerFactory
 
 import scala.collection.immutable
@@ -21,6 +24,12 @@ final class DispatcherImpl[Index: Ordering](
     extends Dispatcher[Index] {
 
   private val logger = LoggerFactory.getLogger(getClass)
+
+  private val spanBuilder: Span.Builder = OpenTelemetry.getTracer("dispatcher-impl").spanBuilder("everything").setNoParent()
+
+  private var span = spanBuilder.startSpan()
+
+  private var lastSpan = Instant.now()
 
   require(
     !indexIsBeforeZero(headAtInitialization),
@@ -75,14 +84,13 @@ final class DispatcherImpl[Index: Ordering](
       } match {
       case Running(prev, disp) =>
         if (Ordering[Index].gt(head, prev)) {
-          val span = OpenTelemetry
-            .getTracer("pkv")
-            .spanBuilder("signal-new-head2")
-            .setNoParent()
-            .setAttribute(SpanAttribute.Offset.key, head.toString.slice("Offset(Bytes(".length, "Offset(Bytes(000000000000048a0000000000000000".length))
-            .startSpan()
+          span.addEvent(Event("new-head", Map((SpanAttribute.Offset.key, head.toString.slice("Offset(Bytes(".length, "Offset(Bytes(000000000000048a0000000000000000".length)))))
+          if (Instant.now().isAfter(lastSpan.plus(5, ChronoUnit.SECONDS))) {
+            span.end()
+            span = spanBuilder.startSpan()
+            lastSpan = Instant.now()
+          }
           disp.signal()
-          span.end()
         }
       case _: Closed =>
         logger.debug(s"$name: Failed to update Dispatcher HEAD: instance already closed.")
@@ -102,7 +110,7 @@ final class DispatcherImpl[Index: Ordering](
         new IllegalArgumentException(
           s"$name: Invalid index section: start '$startExclusive' is after end '$endInclusive'"))
     else {
-      val lastIndex = new AtomicReference[Index](startExclusive)
+//      val lastIndex = new AtomicReference[Index](startExclusive)
       val subscription = state.get.getSignalDispatcher.fold(Source.failed[Index](closedError))(
         _.subscribe(signalOnSubscribe = true)
         // This needs to call getHead directly, otherwise this subscription might miss a Signal being emitted
@@ -121,22 +129,22 @@ final class DispatcherImpl[Index: Ordering](
             // because here we only know that the Index type is order-able.
               .takeWhile(Ordering[Index].lt(_, maxLedgerEnd), inclusive = true)
               .map(Ordering[Index].min(_, maxLedgerEnd))
-              .wireTap(index => {
-                val _ = lastIndex.getAndUpdate(lastIndex =>
-                  if (Ordering[Index].gt(index, lastIndex)) {
-                    val span = OpenTelemetry
-                      .getTracer("pkv")
-                      .spanBuilder("starting-at-span2")
-                      .setNoParent()
-                      .setAttribute(SpanAttribute.Offset.key, index.toString.slice("Offset(Bytes(".length, "Offset(Bytes(000000000000048a0000000000000000".length))
-                      .startSpan()
-                    Spans.addEventToCurrentSpan(Event("starting-at2", Map(("daml.offset", index.toString.slice("Offset(Bytes(".length, "Offset(Bytes(000000000000048a0000000000000000".length)))))
-                    span.end()
-                    index
-                  } else {
-                    lastIndex
-                  })
-              })
+//              .wireTap(index => {
+//                val _ = lastIndex.getAndUpdate(lastIndex =>
+//                  if (Ordering[Index].gt(index, lastIndex)) {
+//                    val span = OpenTelemetry
+//                      .getTracer("pkv")
+//                      .spanBuilder("starting-at-span2")
+//                      .setNoParent()
+//                      .setAttribute(SpanAttribute.Offset.key, index.toString.slice("Offset(Bytes(".length, "Offset(Bytes(000000000000048a0000000000000000".length))
+//                      .startSpan()
+//                    Spans.addEventToCurrentSpan(Event("starting-at2", Map(("daml.offset", index.toString.slice("Offset(Bytes(".length, "Offset(Bytes(000000000000048a0000000000000000".length)))))
+//                    span.end()
+//                    index
+//                  } else {
+//                    lastIndex
+//                  })
+//              })
         )
 
       withOptionalEnd
@@ -144,6 +152,21 @@ final class DispatcherImpl[Index: Ordering](
         .flatMapConcat {
           case (previousHead, head) => subsource(previousHead, head)
         }
+        .wireTap(_ match {
+          case (index, _) =>
+            span.addEvent(Event("subsource", Map((SpanAttribute.Offset.key, index.toString.slice("Offset(Bytes(".length, "Offset(Bytes(000000000000048a0000000000000000".length)))))
+        })
+//        .wireTap(_ match {
+//          case (index, _) =>
+//            val span = OpenTelemetry
+//              .getTracer("pkv")
+//              .spanBuilder("starting-at-span3")
+//              .setNoParent()
+//              .setAttribute(SpanAttribute.Offset.key, index.toString.slice("Offset(Bytes(".length, "Offset(Bytes(000000000000048a0000000000000000".length))
+//              .startSpan()
+//            Spans.addEventToCurrentSpan(Event("starting-at3", Map(("daml.offset", index.toString.slice("Offset(Bytes(".length, "Offset(Bytes(000000000000048a0000000000000000".length)))))
+//            span.end()
+//        })
     }
 
   private class ContinuousRangeEmitter(private var max: Index) // var doesn't need to be synchronized, it is accessed in a GraphStage.
@@ -172,6 +195,7 @@ final class DispatcherImpl[Index: Ordering](
       case Running(_, disp) =>
         disp.signal()
         disp.close()
+        span.end()
       case _: Closed => ()
     }
 
