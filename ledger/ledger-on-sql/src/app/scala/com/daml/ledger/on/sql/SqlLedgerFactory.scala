@@ -19,7 +19,6 @@ import com.daml.ledger.participant.state.v1.SeedService
 import com.daml.ledger.resources.{Resource, ResourceContext, ResourceOwner}
 import com.daml.lf.engine.Engine
 import com.daml.logging.LoggingContext
-import com.daml.metrics.OffsetTracer
 import com.daml.platform.configuration.LedgerConfiguration
 import scopt.OptionParser
 
@@ -47,7 +46,6 @@ object SqlLedgerFactory extends LedgerFactory[ReadWriteService, ExtraConfig] {
       config: Config[ExtraConfig],
       participantConfig: ParticipantConfig,
       engine: Engine,
-      offsetTracer: OffsetTracer,
   )(
       implicit materializer: Materializer,
       loggingContext: LoggingContext,

@@ -10,7 +10,6 @@ import com.daml.ledger.participant.state.kvutils.app._
 import com.daml.ledger.resources.{Resource, ResourceContext, ResourceOwner}
 import com.daml.lf.engine.Engine
 import com.daml.logging.LoggingContext
-import com.daml.metrics.{NoOpOffsetTracer, OffsetTracer}
 import com.daml.resources.ProgramResource
 import scopt.OptionParser
 
@@ -35,7 +34,6 @@ object MainWithEphemeralDirectory {
         config: Config[ExtraConfig],
         participantConfig: ParticipantConfig,
         engine: Engine,
-        offsetTracer: OffsetTracer,
     )(
         implicit materializer: Materializer,
         loggingContext: LoggingContext,
@@ -56,7 +54,6 @@ object MainWithEphemeralDirectory {
             config.copy(extra = config.extra.copy(jdbcUrl = jdbcUrl)),
             participantConfig,
             engine,
-            new NoOpOffsetTracer
           )
           .acquire()
       }

@@ -18,7 +18,7 @@ import com.daml.lf.archive.DarReader
 import com.daml.lf.engine.Engine
 import com.daml.logging.LoggingContext.newLoggingContext
 import com.daml.logging.{ContextualizedLogger, LoggingContext}
-import com.daml.metrics.{JvmMetricSet, OffsetTracerImpl}
+import com.daml.metrics.JvmMetricSet
 import com.daml.platform.apiserver.StandaloneApiServer
 import com.daml.platform.indexer.StandaloneIndexerServer
 import com.daml.platform.store.IndexMetadata
@@ -93,7 +93,6 @@ final class Runner[T <: ReadWriteService, Extra](
         // initialize all configured participants
         _ <- Resource.sequence(config.participants.map { participantConfig =>
           val metrics = factory.createMetrics(participantConfig, config)
-          val offsetTracer = OffsetTracerImpl()
           metrics.registry.registerAll(new JvmMetricSet)
           val lfValueTranslationCache =
             LfValueTranslation.Cache.newInstrumentedInstance(
@@ -109,7 +108,7 @@ final class Runner[T <: ReadWriteService, Extra](
                   .map(_.start(config.metricsReportingInterval.getSeconds, TimeUnit.SECONDS))
                   .acquire())
             ledger <- factory
-              .readWriteServiceOwner(config, participantConfig, sharedEngine, offsetTracer)
+              .readWriteServiceOwner(config, participantConfig, sharedEngine)
               .acquire()
             readService = new TimedReadService(ledger, metrics)
             writeService = new TimedWriteService(ledger, metrics)
@@ -146,7 +145,6 @@ final class Runner[T <: ReadWriteService, Extra](
                   otherInterceptors = factory.interceptors(config),
                   engine = sharedEngine,
                   lfValueTranslationCache = lfValueTranslationCache,
-                  offsetTracer = offsetTracer,
                 ).acquire()
               case ParticipantRunMode.Indexer =>
                 Resource.unit

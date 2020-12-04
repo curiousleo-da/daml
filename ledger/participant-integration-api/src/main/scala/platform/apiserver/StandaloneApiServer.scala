@@ -18,14 +18,14 @@ import com.daml.ledger.participant.state.v1.{LedgerId, ParticipantId, SeedServic
 import com.daml.ledger.resources.{Resource, ResourceContext, ResourceOwner}
 import com.daml.lf.engine.Engine
 import com.daml.logging.{ContextualizedLogger, LoggingContext}
-import com.daml.metrics.{Metrics, NoOpOffsetTracer, OffsetTracer}
+import com.daml.metrics.Metrics
 import com.daml.platform.configuration.{
   CommandConfiguration,
   LedgerConfiguration,
   PartyConfiguration,
   ServerRole
 }
-import com.daml.ports.PortFiles
+import com.daml.ports.{PortFiles}
 import com.daml.platform.index.JdbcIndex
 import com.daml.platform.packages.InMemoryPackageStore
 import com.daml.platform.services.time.TimeProviderType
@@ -52,7 +52,6 @@ final class StandaloneApiServer(
     otherInterceptors: List[ServerInterceptor] = List.empty,
     engine: Engine,
     lfValueTranslationCache: LfValueTranslation.Cache,
-    offsetTracer: OffsetTracer = new NoOpOffsetTracer,
 )(implicit actorSystem: ActorSystem, materializer: Materializer, loggingContext: LoggingContext)
     extends ResourceOwner[ApiServer] {
 
@@ -75,9 +74,8 @@ final class StandaloneApiServer(
           config.eventsPageSize,
           metrics,
           lfValueTranslationCache,
-          offsetTracer,
         )
-        .map(index => new SpannedIndexService(new TimedIndexService(index, metrics), offsetTracer))
+        .map(index => new SpannedIndexService(new TimedIndexService(index, metrics)))
       authorizer = new Authorizer(Clock.systemUTC.instant _, ledgerId, participantId)
       healthChecksWithIndexService = healthChecks + ("index" -> indexService)
       executionSequencerFactory <- new ExecutionSequencerFactoryOwner()

@@ -42,7 +42,7 @@ class OffsetTracerImpl extends OffsetTracer {
 }
 
 object OffsetTracerImpl {
-  def apply(): OffsetTracer = new OffsetTracerImpl()
+  lazy val tracer = new OffsetTracerImpl()
 }
 
 class NanoClock(initialInstant: Instant = Instant.now(), initialNanos: Long = System.nanoTime()) {
