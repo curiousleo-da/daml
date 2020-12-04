@@ -10,9 +10,6 @@ import io.opentelemetry.trace.TracingContextUtils
   * use `opentelemetry-api` directly.
   */
 object Spans {
-  def addEventToCurrentSpan(event: Event): Unit =
-    TracingContextUtils.getCurrentSpan.addEvent(event)
-
   def setCurrentSpanAttribute(key: String, value: String): Unit =
     TracingContextUtils.getCurrentSpan.setAttribute(key, value)
 }

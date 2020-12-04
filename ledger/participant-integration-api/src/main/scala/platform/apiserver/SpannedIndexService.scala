@@ -8,7 +8,7 @@ import java.time.Instant
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 import com.daml.daml_lf_dev.DamlLf
-import com.daml.ledger.api.domain
+import com.daml.ledger.api.{TraceIdentifiers, domain}
 import com.daml.ledger.api.domain.{
   ApplicationId,
   CommandId,
@@ -34,7 +34,7 @@ import com.daml.lf.language.Ast
 import com.daml.lf.transaction.GlobalKey
 import com.daml.lf.value.Value
 import com.daml.logging.LoggingContext
-import com.daml.metrics.OffsetTracerImpl
+import com.daml.metrics.OffsetTracer
 
 import scala.concurrent.Future
 
@@ -87,9 +87,11 @@ private[daml] final class SpannedIndexService(delegate: IndexService) extends In
       .transactions(begin, endAt, filter, verbose)
       .wireTap(
         _.transactions
-          .foreach(transaction =>
-            OffsetTracerImpl.tracer.observeEnd(
-              Offset(Bytes.fromString(transaction.offset).right.get))))
+          .foreach(
+            transaction =>
+              OffsetTracer.observeEnd(
+                Offset(Bytes.fromString(transaction.offset).right.get),
+                TraceIdentifiers.fromTransaction(transaction))))
 
   override def transactionTrees(
       begin: domain.LedgerOffset,
@@ -101,9 +103,11 @@ private[daml] final class SpannedIndexService(delegate: IndexService) extends In
       .transactionTrees(begin, endAt, filter, verbose)
       .wireTap(
         _.transactions
-          .foreach(transaction =>
-            OffsetTracerImpl.tracer.observeEnd(
-              Offset(Bytes.fromString(transaction.offset).right.get))))
+          .foreach(
+            transaction =>
+              OffsetTracer.observeEnd(
+                Offset(Bytes.fromString(transaction.offset).right.get),
+                TraceIdentifiers.fromTransactionTree(transaction))))
 
   override def getTransactionById(
       transactionId: TransactionId,

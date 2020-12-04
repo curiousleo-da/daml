@@ -4,15 +4,41 @@
 package com.daml.metrics
 
 import com.daml.ledger.participant.state.v1.Offset
+import io.opentelemetry.OpenTelemetry
+import io.opentelemetry.common.Attributes
+import io.opentelemetry.trace.Span
 
-trait OffsetTracer {
-  def observeHead(head: Offset): Unit
+/**
+  * Reports telemetry for the index DB -> Ledger API read path.
+  */
+object OffsetTracer {
+  private val tracer = OpenTelemetry.getTracer("offset-tracer")
+  private val spanCache = scala.collection.mutable.SortedMap[Offset, Span]()
 
-  def observeEnd(offset: Offset): Unit
-}
+  def observeHead(head: Offset): Unit = spanCache.synchronized {
+    val span = tracer
+      .spanBuilder("daml.participant.read_path.index_db_to_ledger_api")
+      .setNoParent()
+      .setAttribute(SpanAttribute.Offset.key, head.toHexString)
+      .startSpan()
+    val _ = spanCache.put(head, span)
+  }
 
-class NoOpOffsetTracer extends OffsetTracer {
-  override def observeHead(head: Offset): Unit = ()
-
-  override def observeEnd(offset: Offset): Unit = ()
+  def observeEnd(offset: Offset, attributeMap: Map[String, String]): Unit = spanCache.synchronized {
+    val nextHead = spanCache.iteratorFrom(offset)
+    if (nextHead.hasNext) {
+      val (head, span) = nextHead.next()
+      span.addEvent("send_to_client", {
+        val attributes = Attributes.newBuilder()
+        attributeMap.foreach { case (k, v) => attributes.setAttribute(k, v) }
+        attributes.build()
+      })
+      if (head == offset) {
+        span.end()
+        val _ = spanCache.remove(head)
+      }
+    } else {
+      println(s"observeEnd(${offset.toHexString}): no head found")
+    }
+  }
 }
