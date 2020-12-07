@@ -15,12 +15,7 @@ import com.daml.ledger.api.domain.{ApplicationId, CommandId, LedgerId}
 import com.daml.ledger.api.health.HealthStatus
 import com.daml.ledger.api.v1.active_contracts_service.GetActiveContractsResponse
 import com.daml.ledger.api.v1.command_completion_service.CompletionStreamResponse
-import com.daml.ledger.api.v1.transaction_service.{
-  GetFlatTransactionResponse,
-  GetTransactionResponse,
-  GetTransactionTreesResponse,
-  GetTransactionsResponse
-}
+import com.daml.ledger.api.v1.transaction_service.{GetFlatTransactionResponse, GetTransactionResponse, GetTransactionTreesResponse, GetTransactionsResponse}
 import com.daml.ledger.participant.state.index.v2
 import com.daml.ledger.participant.state.index.v2.CommandDeduplicationResult
 import com.daml.ledger.participant.state.v1.{Configuration, Offset}
@@ -61,12 +56,15 @@ private[platform] abstract class BaseLedger(
       endInclusive: Option[Offset],
       filter: Map[Party, Set[Identifier]],
       verbose: Boolean,
-  )(implicit loggingContext: LoggingContext): Source[(Offset, GetTransactionsResponse), NotUsed] =
+  )(implicit loggingContext: LoggingContext): Source[(Offset, GetTransactionsResponse), NotUsed] = {
+//    val span = TracingContextUtils.getCurrentSpan
+//    span.addEvent("hello from flatTransactions")
     dispatcher.startingAt(
       startExclusive.getOrElse(Offset.beforeBegin),
       RangeSource(ledgerDao.transactionsReader.getFlatTransactions(_, _, filter, verbose)),
       endInclusive
     )
+  }
 
   override def transactionTrees(
       startExclusive: Option[Offset],

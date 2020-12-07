@@ -114,7 +114,16 @@ final class DispatcherImpl[Index: Ordering](
       withOptionalEnd
         .statefulMapConcat(() => new ContinuousRangeEmitter(startExclusive))
         .flatMapConcat {
-          case (previousHead, head) => subsource(previousHead, head)
+          case (previousHead, head) =>
+//            OffsetTracer.observeStart(previousHead, head)
+            subsource(previousHead, head)
+              .map(x => (previousHead, head, x._1, x._2))
+        }
+        .map {
+          case (_, _, index, item) =>
+//            OffsetTracer.observeItem(previousHead, head, index, item)
+            // PROBLEM: when to end the span?
+            (index, item)
         }
     }
 

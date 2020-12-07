@@ -7,22 +7,21 @@ import java.sql.Connection
 
 import akka.NotUsed
 import akka.stream.scaladsl.Source
-import com.daml.ledger.participant.state.v1.{Offset, TransactionId}
+import com.daml
+import com.daml.ledger.api.TraceIdentifiers
 import com.daml.ledger.api.v1.active_contracts_service.GetActiveContractsResponse
 import com.daml.ledger.api.v1.event.Event
 import com.daml.ledger.api.v1.transaction.TreeEvent
-import com.daml.ledger.api.v1.transaction_service.{
-  GetFlatTransactionResponse,
-  GetTransactionResponse,
-  GetTransactionTreesResponse,
-  GetTransactionsResponse
-}
+import com.daml.ledger.api.v1.transaction_service.{GetFlatTransactionResponse, GetTransactionResponse, GetTransactionTreesResponse, GetTransactionsResponse}
+import com.daml.ledger.participant.state.v1.{Offset, TransactionId}
 import com.daml.logging.{ContextualizedLogger, LoggingContext}
-import com.daml.metrics.{DatabaseMetrics, Metrics, Timed}
+import com.daml.metrics.{DatabaseMetrics, Metrics, SpanAttribute, Timed}
 import com.daml.platform.ApiOffset
 import com.daml.platform.store.DbType
 import com.daml.platform.store.SimpleSqlAsVectorOf.SimpleSqlAsVectorOf
 import com.daml.platform.store.dao.{DbDispatcher, PaginatingAsyncStream}
+import io.opentelemetry.OpenTelemetry
+import io.opentelemetry.trace.{DefaultSpan, Span}
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -40,6 +39,8 @@ private[dao] final class TransactionsReader(
     metrics: Metrics,
     lfValueTranslation: LfValueTranslation,
 )(implicit executionContext: ExecutionContext) {
+
+  private val tracer = OpenTelemetry.getTracer("transactions-reader")
 
   private val dbMetrics = metrics.daml.index.db
 
@@ -67,7 +68,12 @@ private[dao] final class TransactionsReader(
       filter: FilterRelation,
       verbose: Boolean,
   )(implicit loggingContext: LoggingContext): Source[(Offset, GetTransactionsResponse), NotUsed] = {
-
+    val txnSpan = tracer
+      .spanBuilder("com.daml.platform.store.dao.events.TransactionsReader.getFlatTransactions")
+      .setNoParent()
+      .setAttribute(SpanAttribute.OffsetFrom.key, startExclusive.toHexString)
+      .setAttribute(SpanAttribute.OffsetTo.key, endInclusive.toHexString)
+      .startSpan()
     logger.debug(s"getFlatTransactions($startExclusive, $endInclusive, $filter, $verbose)")
 
     val requestedRangeF = getEventSeqIdRange(startExclusive, endInclusive)
@@ -95,7 +101,8 @@ private[dao] final class TransactionsReader(
             verbose,
             dbMetrics.getFlatTransactions,
             query,
-            nextPageRange[Event](requestedRange.endInclusive)
+            nextPageRange[Event](requestedRange.endInclusive),
+            txnSpan,
           )(requestedRange)
         })
         .mapMaterializedValue(_ => NotUsed)
@@ -104,6 +111,10 @@ private[dao] final class TransactionsReader(
       .mapConcat { events =>
         val response = EventsTable.Entry.toGetTransactionsResponse(events)
         response.map(r => offsetFor(r) -> r)
+      }
+      .map { case (offset, response) =>
+        response.transactions.foreach(txn => txnSpan.addEvent(daml.metrics.Event("transaction-received", TraceIdentifiers.fromTransaction(txn))))
+        (offset, response)
       }
   }
 
@@ -289,13 +300,15 @@ private[dao] final class TransactionsReader(
       queryMetric: DatabaseMetrics,
       query: EventsRange[A] => Connection => Vector[EventsTable.Entry[Raw[E]]],
       getNextPageRange: EventsTable.Entry[E] => EventsRange[A],
+      txnSpan: Span = DefaultSpan.getInvalid
   )(range: EventsRange[A])(
       implicit loggingContext: LoggingContext,
   ): Source[EventsTable.Entry[E], NotUsed] =
     PaginatingAsyncStream.streamFrom(range, getNextPageRange) { range1 =>
-      if (EventsRange.isEmpty(range1))
+      if (EventsRange.isEmpty(range1)) {
+        txnSpan.end()
         Future.successful(Vector.empty)
-      else {
+      } else {
         val rawEvents: Future[Vector[EventsTable.Entry[Raw[E]]]] =
           dispatcher.executeSql(queryMetric)(query(range1))
         rawEvents.flatMap(

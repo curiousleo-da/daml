@@ -38,6 +38,7 @@ compile_deps = [
     "//ledger/participant-state-index",
     "//libs-scala/build-info",
     "//libs-scala/contextualized-logging",
+    "@maven//:io_opentelemetry_opentelemetry_api",
     "//libs-scala/concurrent",
     "//libs-scala/ports",
     "//libs-scala/resources",
