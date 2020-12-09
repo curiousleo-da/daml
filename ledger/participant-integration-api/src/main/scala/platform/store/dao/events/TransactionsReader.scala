@@ -69,7 +69,7 @@ private[dao] final class TransactionsReader(
       filter: FilterRelation,
       verbose: Boolean,
   )(implicit loggingContext: LoggingContext): Source[(Offset, GetTransactionsResponse), NotUsed] = {
-    val tracer = new StreamTracer(
+    val tracer = new SourceTracer(
       OpenTelemetryTracer
         .spanBuilder("com.daml.platform.store.dao.events.TransactionsReader.getFlatTransactions")
         .setNoParent()
@@ -104,7 +104,7 @@ private[dao] final class TransactionsReader(
             dbMetrics.getFlatTransactions,
             query,
             nextPageRange[Event](requestedRange.endInclusive),
-            tracer.started,
+            tracer.produced,
           )(requestedRange)
         })
         .mapMaterializedValue(_ => NotUsed)
@@ -118,7 +118,7 @@ private[dao] final class TransactionsReader(
         case (offset, response) =>
           response.transactions.foreach(
             txn =>
-              tracer.finished(
+              tracer.consumed(
                 daml.metrics.Event("transaction", TraceIdentifiers.fromTransaction(txn))))
           (offset, response)
       }
@@ -152,7 +152,7 @@ private[dao] final class TransactionsReader(
       verbose: Boolean,
   )(implicit loggingContext: LoggingContext)
     : Source[(Offset, GetTransactionTreesResponse), NotUsed] = {
-    val tracer = new StreamTracer(
+    val tracer = new SourceTracer(
       OpenTelemetryTracer
         .spanBuilder("com.daml.platform.store.dao.events.TransactionsReader.getTransactionTrees")
         .setNoParent()
@@ -188,7 +188,7 @@ private[dao] final class TransactionsReader(
             dbMetrics.getTransactionTrees,
             query,
             nextPageRange[TreeEvent](requestedRange.endInclusive),
-            tracer.started
+            tracer.produced
           )(requestedRange)
         })
         .mapMaterializedValue(_ => NotUsed)
@@ -202,7 +202,7 @@ private[dao] final class TransactionsReader(
         case (offset, response) =>
           response.transactions.foreach(
             txn =>
-              tracer.finished(
+              tracer.consumed(
                 com.daml.metrics.Event("transaction", TraceIdentifiers.fromTransactionTree(txn))))
           (offset, response)
       }
@@ -234,7 +234,7 @@ private[dao] final class TransactionsReader(
       filter: FilterRelation,
       verbose: Boolean,
   )(implicit loggingContext: LoggingContext): Source[GetActiveContractsResponse, NotUsed] = {
-    val tracer = new StreamTracer(
+    val tracer = new SourceTracer(
       OpenTelemetryTracer
         .spanBuilder("com.daml.platform.store.dao.events.TransactionsReader.getActiveContracts")
         .setNoParent()
@@ -268,7 +268,7 @@ private[dao] final class TransactionsReader(
             dbMetrics.getActiveContracts,
             query,
             nextPageRange[Event](requestedRange.endInclusive),
-            tracer.started,
+            tracer.produced,
           )(requestedRange)
         })
         .mapMaterializedValue(_ => NotUsed)
@@ -276,7 +276,7 @@ private[dao] final class TransactionsReader(
     groupContiguous(events)(by = _.transactionId)
       .mapConcat(EventsTable.Entry.toGetActiveContractsResponse)
       .map(response => {
-        tracer.finished(
+        tracer.consumed(
           com.daml.metrics.Event("contract", Map((SpanAttribute.Offset.key, response.offset))))
         response
       })
