@@ -5,7 +5,7 @@ package com.daml.platform.store.dao.events
 
 import java.sql.Connection
 
-import akka.NotUsed
+import akka.{Done, NotUsed}
 import akka.stream.scaladsl.Source
 import com.daml
 import com.daml.ledger.api.TraceIdentifiers
@@ -110,21 +110,19 @@ private[dao] final class TransactionsReader(
         })
         .mapMaterializedValue(_ => NotUsed)
 
-    endSpanOnSourceTermination(
-      span,
-      groupContiguous(events)(by = _.transactionId)
-        .mapConcat { events =>
-          val response = EventsTable.Entry.toGetTransactionsResponse(events)
-          response.map(r => offsetFor(r) -> r)
-        }
-        .map {
-          case (offset, response) =>
-            response.transactions.foreach(txn =>
-              span.addEvent(
-                daml.metrics.Event("transaction", TraceIdentifiers.fromTransaction(txn))))
-            (offset, response)
-        }
-    )
+    groupContiguous(events)(by = _.transactionId)
+      .mapConcat { events =>
+        val response = EventsTable.Entry.toGetTransactionsResponse(events)
+        response.map(r => offsetFor(r) -> r)
+      }
+      .map {
+        case (offset, response) =>
+          response.transactions.foreach(txn =>
+            span.addEvent(daml.metrics.Event("transaction", TraceIdentifiers.fromTransaction(txn))))
+          (offset, response)
+      }
+      .watchTermination()(endSpanOnTermination(span))
+
   }
 
   def lookupFlatTransactionById(
@@ -195,21 +193,19 @@ private[dao] final class TransactionsReader(
         })
         .mapMaterializedValue(_ => NotUsed)
 
-    endSpanOnSourceTermination(
-      span,
-      groupContiguous(events)(by = _.transactionId)
-        .mapConcat { events =>
-          val response = EventsTable.Entry.toGetTransactionTreesResponse(events)
-          response.map(r => offsetFor(r) -> r)
-        }
-        .map {
-          case (offset, response) =>
-            response.transactions.foreach(txn =>
-              span.addEvent(
-                com.daml.metrics.Event("transaction", TraceIdentifiers.fromTransactionTree(txn))))
-            (offset, response)
-        }
-    )
+    groupContiguous(events)(by = _.transactionId)
+      .mapConcat { events =>
+        val response = EventsTable.Entry.toGetTransactionTreesResponse(events)
+        response.map(r => offsetFor(r) -> r)
+      }
+      .map {
+        case (offset, response) =>
+          response.transactions.foreach(txn =>
+            span.addEvent(
+              com.daml.metrics.Event("transaction", TraceIdentifiers.fromTransactionTree(txn))))
+          (offset, response)
+      }
+      .watchTermination()(endSpanOnTermination(span))
   }
 
   def lookupTransactionTreeById(
@@ -276,16 +272,14 @@ private[dao] final class TransactionsReader(
         })
         .mapMaterializedValue(_ => NotUsed)
 
-    endSpanOnSourceTermination(
-      span,
-      groupContiguous(events)(by = _.transactionId)
-        .mapConcat(EventsTable.Entry.toGetActiveContractsResponse)
-        .map(response => {
-          span.addEvent(
-            com.daml.metrics.Event("contract", Map((SpanAttribute.Offset.key, response.offset))))
-          response
-        })
-    )
+    groupContiguous(events)(by = _.transactionId)
+      .mapConcat(EventsTable.Entry.toGetActiveContractsResponse)
+      .map(response => {
+        span.addEvent(
+          com.daml.metrics.Event("contract", Map((SpanAttribute.Offset.key, response.offset))))
+        response
+      })
+      .watchTermination()(endSpanOnTermination(span))
   }
 
   private def nextPageRange[E](endEventSeqId: (Offset, Long))(
@@ -357,17 +351,16 @@ private[dao] final class TransactionsReader(
       }
     }
 
-  private def endSpanOnSourceTermination[Out, Mat](
-      span: Span,
-      out: Source[Out, Mat]): Source[Out, Mat] = {
-    out.watchTermination() { (_, done) =>
-      done.onComplete {
-        case Failure(exception) =>
-          span.recordException(exception)
-          span.end()
-        case Success(_) => span.end()
-      }
+  private def endSpanOnTermination[Mat, Out](span: Span)(mat: Mat, done: Future[Done]): Mat = {
+    done.onComplete {
+      case Failure(exception) =>
+        println(s"done.onComplete Failure $span")
+        span.recordException(exception)
+        span.end()
+      case Success(_) =>
+        println(s"done.onComplete Success $span")
+        span.end()
     }
-    out
+    mat
   }
 }
