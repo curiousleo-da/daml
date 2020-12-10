@@ -5,8 +5,8 @@ package com.daml.platform.store.dao.events
 
 import java.sql.Connection
 
-import akka.{Done, NotUsed}
 import akka.stream.scaladsl.Source
+import akka.{Done, NotUsed}
 import com.daml
 import com.daml.ledger.api.TraceIdentifiers
 import com.daml.ledger.api.v1.active_contracts_service.GetActiveContractsResponse
@@ -115,14 +115,12 @@ private[dao] final class TransactionsReader(
         val response = EventsTable.Entry.toGetTransactionsResponse(events)
         response.map(r => offsetFor(r) -> r)
       }
-      .map {
-        case (offset, response) =>
+      .wireTap(_ match {
+        case (_, response) =>
           response.transactions.foreach(txn =>
             span.addEvent(daml.metrics.Event("transaction", TraceIdentifiers.fromTransaction(txn))))
-          (offset, response)
-      }
+      })
       .watchTermination()(endSpanOnTermination(span))
-
   }
 
   def lookupFlatTransactionById(
@@ -198,13 +196,12 @@ private[dao] final class TransactionsReader(
         val response = EventsTable.Entry.toGetTransactionTreesResponse(events)
         response.map(r => offsetFor(r) -> r)
       }
-      .map {
-        case (offset, response) =>
+      .wireTap(_ match {
+        case (_, response) =>
           response.transactions.foreach(txn =>
             span.addEvent(
-              com.daml.metrics.Event("transaction", TraceIdentifiers.fromTransactionTree(txn))))
-          (offset, response)
-      }
+              daml.metrics.Event("transaction", TraceIdentifiers.fromTransactionTree(txn))))
+      })
       .watchTermination()(endSpanOnTermination(span))
   }
 
@@ -274,10 +271,9 @@ private[dao] final class TransactionsReader(
 
     groupContiguous(events)(by = _.transactionId)
       .mapConcat(EventsTable.Entry.toGetActiveContractsResponse)
-      .map(response => {
+      .wireTap(response => {
         span.addEvent(
           com.daml.metrics.Event("contract", Map((SpanAttribute.Offset.key, response.offset))))
-        response
       })
       .watchTermination()(endSpanOnTermination(span))
   }
